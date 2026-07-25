@@ -1,40 +1,37 @@
-# FormaMentis — Beta 02
+# FormaMentis — Release 0.3
 
-Questa versione aggiunge:
+Prima beta realmente utilizzabile.
 
-- marchio `formamentis`
-- sezione **Ascolta**
-- pulsante **+**
-- caricamento di musica, audiolibri, podcast e meditazioni
-- selezione della stanza
-- anteprima locale immediata
-- collegamento predisposto a Supabase Storage
+## Funzioni
 
-## Avvio
+- nuovo ingresso: **Come vuoi stare?**
+- creazione libera delle Stanze
+- caricamento di MP3, M4A, WAV, AAC, OGG e FLAC
+- salvataggio locale persistente con IndexedDB, anche senza Supabase
+- Collezione con eliminazione dei contenuti
+- player con play/pausa, avanzamento e durata
+- collegamento Supabase con accesso anonimo automatico
+- caricamento online, recupero automatico e URL firmati
+
+## Avvio locale
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Netlify
+## Pubblicazione Netlify
 
 - Build command: `npm run build`
 - Publish directory: `dist`
 
-## Variabili Netlify / Supabase
+## Supabase opzionale
 
-Aggiungere in Netlify:
+1. Eseguire `supabase/setup.sql` nel SQL Editor.
+2. In Supabase aprire **Authentication → Providers → Anonymous** e attivare gli accessi anonimi.
+3. In Netlify aggiungere:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+4. Eseguire un nuovo deploy.
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-
-## Supabase
-
-Eseguire il file:
-
-`supabase/setup.sql`
-
-Il bucket si chiama:
-
-`audio-files`
+Senza Supabase l'app funziona comunque e conserva i file nel browser del dispositivo.
