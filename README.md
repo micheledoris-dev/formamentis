@@ -1,4 +1,4 @@
-# FormaMentis — Release 0.3
+# FormaMentis — Release 0.3.1
 
 Prima beta realmente utilizzabile.
 

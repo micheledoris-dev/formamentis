@@ -51,7 +51,13 @@ export default function App() {
   const [view, setView] = useState('home')
   const [showUpload, setShowUpload] = useState(false)
   const [showRoom, setShowRoom] = useState(false)
+  const [showRitual, setShowRitual] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
   const [rooms, setRooms] = useState(() => safeJson(localStorage.getItem('formamentis-rooms'), defaultRooms))
+  const [rituals, setRituals] = useState(() => safeJson(localStorage.getItem('formamentis-rituals'), [
+    { id: 'respira', name: 'Respira', timing: 'Ogni mattina', duration: '7 minuti', note: 'Un intervallo breve per cominciare con ordine.' },
+    { id: 'ricomincia', name: 'Ricomincia', timing: 'Quando ne senti il bisogno', duration: '', note: 'Il tuo spazio non deve rispettare un orario.' },
+  ]))
   const [media, setMedia] = useState(() => safeJson(localStorage.getItem('formamentis-media'), starterMedia))
   const [activeTrack, setActiveTrack] = useState(null)
   const [playing, setPlaying] = useState(false)
@@ -71,6 +77,7 @@ export default function App() {
   }, [])
 
   useEffect(() => localStorage.setItem('formamentis-rooms', JSON.stringify(rooms)), [rooms])
+  useEffect(() => localStorage.setItem('formamentis-rituals', JSON.stringify(rituals)), [rituals])
   useEffect(() => localStorage.setItem('formamentis-media', JSON.stringify(media.map(({ play_url, ...item }) => item))), [media])
 
   useEffect(() => {
@@ -215,6 +222,31 @@ export default function App() {
     event.currentTarget.reset()
   }
 
+
+  function createRitual(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const name = String(form.get('name') || '').trim()
+    const timing = String(form.get('timing') || '').trim()
+    const duration = String(form.get('duration') || '').trim()
+    const note = String(form.get('note') || '').trim()
+    if (!name) return
+    setRituals(current => [...current, {
+      id: crypto.randomUUID(),
+      name,
+      timing: timing || 'Quando ne senti il bisogno',
+      duration,
+      note: note || 'Un momento personale da vivere con calma.',
+    }])
+    setShowRitual(false)
+    event.currentTarget.reset()
+  }
+
+  function goTo(nextView) {
+    setView(nextView)
+    setShowMenu(false)
+  }
+
   async function removeMedia(event, item) {
     event.stopPropagation()
     if (!confirm(`Eliminare “${item.title}”?`)) return
@@ -243,17 +275,19 @@ export default function App() {
     <div className="shell">
       <audio ref={audioRef} onEnded={() => setPlaying(false)} onTimeUpdate={e => setProgress(e.currentTarget.currentTime)} onLoadedMetadata={e => setDuration(e.currentTarget.duration)} />
 
-      <header className="topbar"><Brand /><button className="iconButton" aria-label="Menu"><Menu size={21} strokeWidth={1.6} /></button></header>
+      <header className="topbar"><Brand /><button className="iconButton" aria-label="Apri menu" aria-expanded={showMenu} onClick={() => setShowMenu(true)}><Menu size={21} strokeWidth={1.6} /></button></header>
 
       <main>
         {view === 'home' && <section className="hero"><div className="overlay" /><div className="heroContent"><p className="eyebrow">{greeting}, FLAMINIA</p><h1>Come vuoi stare?</h1><p className="heroLead">Non conserviamo file. Custodiamo momenti.</p><div className="actions"><button className="primary" onClick={() => setView('rooms')}>Scegli una stanza</button><button className="secondary" onClick={() => setView('library')}>La Collezione</button></div></div></section>}
 
         {view === 'rooms' && <section className="page"><div className="pageHead"><div><p className="eyebrow">I TUOI LUOGHI</p><h2>Stanze</h2></div><button className="addButton" onClick={() => setShowRoom(true)} aria-label="Crea una stanza"><Plus size={27} /></button></div><div className="roomGrid">{rooms.map((room, index) => <button className={`roomCard room${(index % 4) + 1}`} key={room.id} onClick={() => setView('library')}><span>STANZA {String(index + 1).padStart(2, '0')}</span><strong>{room.name}</strong><p>{room.note}</p><ChevronRight size={20} /></button>)}</div></section>}
 
-        {view === 'rituals' && <section className="page"><div className="pageHead"><div><p className="eyebrow">TEMPO PER TE</p><h2>Rituali</h2></div></div><article className="ritualCard"><Wind /><div><strong>Respira</strong><span>Ogni mattina · 7 minuti</span><p>Un intervallo breve per cominciare con ordine.</p></div></article><article className="ritualCard"><TimerReset /><div><strong>Ricomincia</strong><span>Quando ne senti il bisogno</span><p>Il tuo spazio non deve rispettare un orario.</p></div></article></section>}
+        {view === 'rituals' && <section className="page"><div className="pageHead"><div><p className="eyebrow">TEMPO PER TE</p><h2>Rituali</h2></div><button className="addButton" onClick={() => setShowRitual(true)} aria-label="Crea un rituale"><Plus size={27} /></button></div>{rituals.map((ritual, index) => <article className="ritualCard" key={ritual.id}>{index % 2 === 0 ? <Wind /> : <TimerReset />}<div><strong>{ritual.name}</strong><span>{ritual.timing}{ritual.duration ? ` · ${ritual.duration}` : ''}</span><p>{ritual.note}</p></div></article>)}</section>}
 
         {view === 'library' && <section className="page"><div className="pageHead"><div><p className="eyebrow">MUSICA E PAROLE</p><h2>La Collezione</h2></div><button className="addButton" onClick={() => setShowUpload(true)} aria-label="Carica un file"><Plus size={27} /></button></div><button className="uploadHint" onClick={() => setShowUpload(true)}><Upload size={21} /><div><strong>Aggiungi un nuovo ascolto</strong><span>Musica, audiolibri, podcast o meditazioni</span></div><ChevronRight size={20} /></button>{message && <div className="pageMessage">{message}</div>}<div className="mediaList">{media.length === 0 && <div className="emptyState"><Music2 /><strong>La Collezione è vuota</strong><span>Carica il primo contenuto e premi Play.</span></div>}{media.map((item, index) => <button className={`mediaItem ${activeTrack?.id === item.id ? 'selected' : ''}`} key={item.id} onClick={() => selectTrack(item)}><span className="cover">{String(index + 1).padStart(2, '0')}</span><span className="mediaMeta"><strong>{item.title}</strong><small>{mediaLabels[item.media_type] || item.media_type}{item.author ? ` · ${item.author}` : ''}{item.room ? ` · ${item.room}` : ''}</small></span><span className="itemActions">{!item.demo && <span role="button" tabIndex="0" className="deleteButton" onClick={e => removeMedia(e, item)} aria-label="Elimina"><Trash2 size={16} /></span>}<Play size={18} fill="currentColor" /></span></button>)}</div></section>}
       </main>
+
+      {showMenu && <div className="menuBackdrop" onMouseDown={() => setShowMenu(false)}><aside className="sideMenu" onMouseDown={e => e.stopPropagation()}><div className="menuHead"><Brand /><button className="closeButton menuClose" type="button" onClick={() => setShowMenu(false)} aria-label="Chiudi menu"><X size={20} /></button></div><p className="menuIntro">Il tuo spazio personale.</p><nav className="menuLinks"><button onClick={() => goTo('home')}><Home size={20} /><span>Benvenuto</span><ChevronRight size={18} /></button><button onClick={() => goTo('rooms')}><Headphones size={20} /><span>Stanze</span><ChevronRight size={18} /></button><button onClick={() => goTo('rituals')}><TimerReset size={20} /><span>Rituali</span><ChevronRight size={18} /></button><button onClick={() => goTo('library')}><Library size={20} /><span>La Collezione</span><ChevronRight size={18} /></button></nav><div className="menuActions"><button className="primary" onClick={() => { setShowMenu(false); setShowUpload(true) }}><Upload size={18} /> Aggiungi un ascolto</button><button className="secondary" onClick={() => { setShowMenu(false); setShowRitual(true) }}><Plus size={18} /> Crea un rituale</button></div></aside></div>}
 
       {activeTrack && <aside className="player"><div className="playerTop"><div className="playerIcon"><Music2 size={18} /></div><div className="playerText"><strong>{activeTrack.title}</strong><span>{activeTrack.author || mediaLabels[activeTrack.media_type]}</span></div><button onClick={() => activeTrack.play_url && setPlaying(!playing)} aria-label={playing ? 'Pausa' : 'Riproduci'}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</button></div><div className="timeline"><span>{formatTime(progress)}</span><input type="range" min="0" max={duration || 0} value={Math.min(progress, duration || 0)} onChange={seek} /><span>{formatTime(duration)}</span></div></aside>}
 
@@ -262,6 +296,8 @@ export default function App() {
       {showUpload && <div className="modalBackdrop" onMouseDown={() => setShowUpload(false)}><form className="modal" onSubmit={uploadMedia} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowUpload(false)}><X size={20} /></button><p className="eyebrow">NUOVO ASCOLTO</p><h2>Aggiungi</h2><p className="modalIntro">Scegli ciò che questo contenuto rappresenta per te.</p><label>Tipo<select name="media_type" defaultValue="music"><option value="music">Musica</option><option value="audiobook">Audiolibro</option><option value="podcast">Podcast</option><option value="meditation">Meditazione</option></select></label><label>Titolo<input name="title" placeholder="Es. Il mio audiolibro" required /></label><label>Autore<input name="author" placeholder="Facoltativo" /></label><label>Stanza<select name="room" defaultValue={rooms[0]?.name}>{rooms.map(room => <option key={room.id}>{room.name}</option>)}</select></label><label className="fileField">File audio<input name="file" type="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac" required /></label>{message && <div className="message">{message}</div>}<button className="primary submit" type="submit" disabled={uploading}>{uploading ? <><LoaderCircle className="spin" size={19} /> Caricamento...</> : 'Carica e ascolta'}</button><small className="localNotice">{supabaseConfigured ? (onlineReady ? 'Archivio online collegato.' : 'Collegamento Supabase in corso…') : 'Modalità locale persistente: il file resta su questo dispositivo anche dopo la chiusura del browser.'}</small></form></div>}
 
       {showRoom && <div className="modalBackdrop" onMouseDown={() => setShowRoom(false)}><form className="modal" onSubmit={createRoom} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowRoom(false)}><X size={20} /></button><p className="eyebrow">NUOVO LUOGO</p><h2>Crea una stanza</h2><p className="modalIntro">Dalle un nome che descriva come desideri stare.</p><label>Nome<input name="name" placeholder="Es. Concentrazione" required /></label><label>Significato<input name="note" placeholder="Es. Quando devo ritrovare il filo." /></label><button className="primary submit" type="submit">Crea la stanza</button></form></div>}
+
+      {showRitual && <div className="modalBackdrop" onMouseDown={() => setShowRitual(false)}><form className="modal" onSubmit={createRitual} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowRitual(false)}><X size={20} /></button><p className="eyebrow">NUOVO RITUALE</p><h2>Crea un rituale</h2><p className="modalIntro">Definisci un piccolo appuntamento con te stesso.</p><label>Nome<input name="name" placeholder="Es. Inizio con calma" required /></label><label>Quando<input name="timing" placeholder="Es. Ogni mattina" /></label><label>Durata<input name="duration" placeholder="Es. 10 minuti" /></label><label>Significato<input name="note" placeholder="Es. Per iniziare la giornata con ordine." /></label><button className="primary submit" type="submit">Crea il rituale</button></form></div>}
     </div>
   )
 }

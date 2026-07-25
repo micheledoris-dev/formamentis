@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+- menu laterale ora funzionante
+- navigazione rapida dal menu
+- creazione di nuovi Rituali
+- salvataggio persistente dei Rituali nel browser
+- accesso rapido a upload e nuovo rituale dal menu
+
+
 ## 0.3.0
 
 - nuova Home con domanda guida “Come vuoi stare?”
