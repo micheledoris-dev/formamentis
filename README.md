@@ -1,37 +1,30 @@
-# FormaMentis — Release 0.3.1
+# FormaMentis — Release 0.4
 
-Prima beta realmente utilizzabile.
+Release completa per GitHub + Netlify + Supabase.
 
 ## Funzioni
 
-- nuovo ingresso: **Come vuoi stare?**
-- creazione libera delle Stanze
+- landing ufficiale FormaMentis
+- Stanze e Rituali
 - caricamento di MP3, M4A, WAV, AAC, OGG e FLAC
-- salvataggio locale persistente con IndexedDB, anche senza Supabase
-- Collezione con eliminazione dei contenuti
-- player con play/pausa, avanzamento e durata
-- collegamento Supabase con accesso anonimo automatico
-- caricamento online, recupero automatico e URL firmati
+- salvataggio locale se Supabase non è disponibile
+- salvataggio online su Supabase Storage
+- archivio `media_items` con Row Level Security
+- riproduzione ed eliminazione dei contenuti
+- compatibilità con `VITE_SUPABASE_ANON_KEY` e `VITE_SUPABASE_PUBLISHABLE_KEY`
+- controllo delle variabili per evitare la pagina nera
 
-## Avvio locale
+## Pubblicazione
 
-```bash
-npm install
-npm run dev
-```
+Estrarre lo ZIP e caricare su GitHub tutto il contenuto della cartella, sostituendo i file esistenti. Netlify avvierà automaticamente il deploy.
 
-## Pubblicazione Netlify
+## Configurazione Supabase
 
-- Build command: `npm run build`
-- Publish directory: `dist`
+1. In Authentication > Sign In / Providers attivare **Allow anonymous sign-ins**.
+2. Aprire SQL Editor.
+3. Copiare ed eseguire `supabase/setup.sql`.
+4. Su Netlify conservare:
+   - `VITE_SUPABASE_URL` = solo URL `https://...supabase.co`
+   - `VITE_SUPABASE_ANON_KEY` = solo chiave `sb_publishable_...`
 
-## Supabase opzionale
-
-1. Eseguire `supabase/setup.sql` nel SQL Editor.
-2. In Supabase aprire **Authentication → Providers → Anonymous** e attivare gli accessi anonimi.
-3. In Netlify aggiungere:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-4. Eseguire un nuovo deploy.
-
-Senza Supabase l'app funziona comunque e conserva i file nel browser del dispositivo.
+Non inserire mai la Secret key nel progetto o su GitHub.

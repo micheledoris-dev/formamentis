@@ -16,7 +16,7 @@ import {
   Wind,
   X,
 } from 'lucide-react'
-import { supabase, supabaseConfigured } from './supabase'
+import { supabase, supabaseConfigured, supabaseConfigurationError } from './supabase'
 import { deleteLocalAudio, getLocalAudio, saveLocalAudio } from './storage'
 
 const defaultRooms = [
@@ -83,7 +83,10 @@ export default function App() {
   useEffect(() => {
     let mounted = true
     async function connect() {
-      if (!supabaseConfigured) return
+      if (!supabaseConfigured) {
+        if (supabaseConfigurationError && !supabaseConfigurationError.includes('modalità locale')) setMessage(supabaseConfigurationError)
+        return
+      }
       try {
         let { data } = await supabase.auth.getSession()
         if (!data.session) {
@@ -102,6 +105,7 @@ export default function App() {
         if (mounted) {
           setMedia(hydrated.length ? hydrated : starterMedia)
           setOnlineReady(true)
+          setMessage('')
         }
       } catch (error) {
         if (mounted) setMessage(`Supabase: ${error.message}`)

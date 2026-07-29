@@ -1,22 +1,11 @@
 # Changelog
 
-## 0.3.1
-- menu laterale ora funzionante
-- navigazione rapida dal menu
-- creazione di nuovi Rituali
-- salvataggio persistente dei Rituali nel browser
-- accesso rapido a upload e nuovo rituale dal menu
+## 0.4.0
 
-
-## 0.3.0
-
-- nuova Home con domanda guida “Come vuoi stare?”
-- sezione rinominata “La Collezione”
-- creazione di nuove Stanze
-- persistenza dei file audio nel browser tramite IndexedDB
-- riproduzione dopo riapertura del browser sullo stesso dispositivo
-- player con barra di avanzamento e durata
-- eliminazione dei contenuti
-- accesso anonimo Supabase automatico, se configurato
-- recupero dei file online e generazione di URL firmati
-- messaggi di stato e gestione degli errori migliorati
+- collegamento Supabase reso più robusto
+- supporto sia alla publishable key sia alla legacy anon key
+- validazione preventiva di URL e chiave per evitare schermate nere
+- SQL idempotente per tabella, bucket e policy
+- limite Storage impostato a 100 MB per file
+- mantenuta la modalità locale di sicurezza
+- mantenute landing, Stanze, Rituali, Collezione e player
