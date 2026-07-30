@@ -83,6 +83,8 @@ export default function App() {
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [mediaDetailsError, setMediaDetailsError] = useState('')
+  const [roomContentsError, setRoomContentsError] = useState('')
   const [onlineReady, setOnlineReady] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -332,59 +334,140 @@ export default function App() {
 
   async function saveRoomContents(event) {
     event.preventDefault()
-    if (!selectedRoom) return
-    setSaving(true)
+    if (!selectedRoom || saving) return
+
     const form = new FormData(event.currentTarget)
     const selectedMediaIds = form.getAll('media_ids').map(String)
+    const roomId = String(selectedRoom.id)
+    const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value))
+
+    setSaving(true)
+    setRoomContentsError('')
+
     try {
-      if (supabaseConfigured) {
+      // Scriviamo su Supabase solo per elementi realmente online. I contenuti locali
+      // restano comunque assegnabili e vengono salvati nel localStorage.
+      if (supabaseConfigured && onlineReady && isUuid(roomId)) {
         const user = await currentUser()
-        const { error: removeError } = await supabase.from('media_rooms').delete().eq('room_id', selectedRoom.id)
-        if (removeError) throw removeError
-        if (selectedMediaIds.length) {
-          const { error: addError } = await supabase.from('media_rooms').insert(selectedMediaIds.map(mediaId => ({ user_id: user.id, media_id: mediaId, room_id: selectedRoom.id })))
+        const onlineItems = media.filter(item => !item.demo && !item.local && isUuid(item.id))
+        const onlineIds = new Set(onlineItems.map(item => String(item.id)))
+        const wantedIds = selectedMediaIds.filter(id => onlineIds.has(id))
+        const previousIds = onlineItems
+          .filter(item => (item.room_ids || []).map(String).includes(roomId))
+          .map(item => String(item.id))
+
+        const idsToRemove = previousIds.filter(id => !wantedIds.includes(id))
+        const idsToAdd = wantedIds.filter(id => !previousIds.includes(id))
+
+        if (idsToRemove.length) {
+          const { error: removeError } = await supabase
+            .from('media_rooms')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('room_id', roomId)
+            .in('media_id', idsToRemove)
+          if (removeError) throw removeError
+        }
+
+        if (idsToAdd.length) {
+          const { error: addError } = await supabase
+            .from('media_rooms')
+            .upsert(
+              idsToAdd.map(mediaId => ({ user_id: user.id, media_id: mediaId, room_id: roomId })),
+              { onConflict: 'media_id,room_id', ignoreDuplicates: true },
+            )
           if (addError) throw addError
         }
       }
-      setMedia(current => current.map(item => ({
-        ...item,
-        room_ids: selectedMediaIds.includes(item.id)
-          ? Array.from(new Set([...(item.room_ids || []), selectedRoom.id]))
-          : (item.room_ids || []).filter(id => id !== selectedRoom.id),
-      })))
+
+      setMedia(current => current.map(item => {
+        const currentRoomIds = (item.room_ids || []).map(String)
+        const shouldBelong = selectedMediaIds.includes(String(item.id))
+        return {
+          ...item,
+          room_ids: shouldBelong
+            ? Array.from(new Set([...currentRoomIds, roomId]))
+            : currentRoomIds.filter(id => id !== roomId),
+        }
+      }))
       setShowRoomContents(false)
-    } catch (error) { setMessage(error.message) } finally { setSaving(false) }
+      setMessage('Contenuti della Stanza salvati.')
+    } catch (error) {
+      const detail = error?.message || 'Salvataggio non riuscito.'
+      setRoomContentsError(detail)
+      setMessage(`Salvataggio non riuscito: ${detail}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
 
   async function saveMediaDetails(event) {
     event.preventDefault()
-    if (!editingMedia) return
+    if (!editingMedia || saving) return
+
     const form = new FormData(event.currentTarget)
     const roomIds = form.getAll('room_ids').map(String)
     const title = String(form.get('title') || '').trim() || editingMedia.title
     const author = String(form.get('author') || '').trim()
+    const isLocalItem = Boolean(editingMedia.local) || String(editingMedia.id).startsWith('local-')
+
     setSaving(true)
+    setMediaDetailsError('')
+
     try {
-      if (supabaseConfigured && !editingMedia.demo) {
+      if (supabaseConfigured && !editingMedia.demo && !isLocalItem) {
         const user = await currentUser()
-        const { error: updateError } = await supabase.from('media_items').update({ title, author: author || null }).eq('id', editingMedia.id)
+
+        const { error: updateError } = await supabase
+          .from('media_items')
+          .update({ title, author: author || null })
+          .eq('id', editingMedia.id)
+          .eq('user_id', user.id)
         if (updateError) throw updateError
-        const { error: deleteError } = await supabase.from('media_rooms').delete().eq('media_id', editingMedia.id)
-        if (deleteError) throw deleteError
-        if (roomIds.length) {
-          const { error: insertError } = await supabase.from('media_rooms').insert(roomIds.map(roomId => ({ user_id: user.id, media_id: editingMedia.id, room_id: roomId })))
+
+        const previousRoomIds = (editingMedia.room_ids || []).map(String)
+        const roomIdsToRemove = previousRoomIds.filter(id => !roomIds.includes(id))
+        const roomIdsToAdd = roomIds.filter(id => !previousRoomIds.includes(id))
+
+        if (roomIdsToRemove.length) {
+          const { error: deleteError } = await supabase
+            .from('media_rooms')
+            .delete()
+            .eq('media_id', editingMedia.id)
+            .eq('user_id', user.id)
+            .in('room_id', roomIdsToRemove)
+          if (deleteError) throw deleteError
+        }
+
+        if (roomIdsToAdd.length) {
+          const { error: insertError } = await supabase
+            .from('media_rooms')
+            .upsert(
+              roomIdsToAdd.map(roomId => ({ user_id: user.id, media_id: editingMedia.id, room_id: roomId })),
+              { onConflict: 'media_id,room_id', ignoreDuplicates: true },
+            )
           if (insertError) throw insertError
         }
       }
-      setMedia(current => current.map(item => item.id === editingMedia.id ? { ...item, title, author, room_ids: roomIds } : item))
+
+      setMedia(current => current.map(item =>
+        item.id === editingMedia.id ? { ...item, title, author, room_ids: roomIds } : item
+      ))
       setEditingMedia(null)
       setShowMediaDetails(false)
-      setMessage(roomIds.length ? 'Contenuto assegnato alle Stanze.' : 'Contenuto salvato senza Stanza.')
-    } catch (error) { setMessage(error.message) } finally { setSaving(false) }
+      setMessage(roomIds.length ? 'Collocazione salvata.' : 'Contenuto salvato senza Stanza.')
+    } catch (error) {
+      const detail = error?.message || 'Salvataggio non riuscito.'
+      setMediaDetailsError(detail)
+      setMessage(`Salvataggio non riuscito: ${detail}`)
+    } finally {
+      setSaving(false)
+    }
   }
 
   function openMediaDetails(item) {
+    setMediaDetailsError('')
     setEditingMedia(item)
     setShowMediaDetails(true)
   }
@@ -546,7 +629,7 @@ export default function App() {
 
         {view === 'rooms' && <section className="page"><div className="pageHead"><div><p className="eyebrow">I TUOI LUOGHI</p><h2>Stanze</h2></div><button className="addButton" onClick={() => { setEditingRoom(null); setShowRoom(true) }}><Plus size={27} /></button></div><div className="roomGrid">{rooms.map((room, index) => <button className={`roomCard room${(index % 4) + 1}`} key={room.id} onClick={() => openRoom(room)}><span>STANZA {String(index + 1).padStart(2, '0')} · {roomCounts[room.id] || 0} CONTENUTI</span><strong>{room.name}</strong><p>{room.note}</p><ChevronRight size={20} /></button>)}</div></section>}
 
-        {view === 'room' && selectedRoom && <section className="page roomDetail"><button className="backLink" onClick={() => setView('rooms')}><ArrowLeft size={18} /> Tutte le stanze</button><div className="pageHead"><div><p className="eyebrow">IL TUO LUOGO</p><h2>{selectedRoom.name}</h2><p className="roomDescription">{selectedRoom.note}</p></div><button className="addButton" onClick={() => openUpload(selectedRoom.id)}><Plus size={27} /></button></div><div className="roomToolbar"><button className="secondary" onClick={() => setShowRoomContents(true)}><Link2 size={17} /> Aggiungi dalla Collezione</button><button className="ghostButton" onClick={() => { setEditingRoom(selectedRoom); setShowRoom(true) }}><Pencil size={16} /> Modifica</button><button className="ghostButton danger" onClick={() => deleteRoom(selectedRoom)}><Trash2 size={16} /> Elimina</button></div>{message && <div className="pageMessage">{message}</div>}<MediaList items={roomMedia} emptyText="Questa stanza è ancora vuota" /></section>}
+        {view === 'room' && selectedRoom && <section className="page roomDetail"><button className="backLink" onClick={() => setView('rooms')}><ArrowLeft size={18} /> Tutte le stanze</button><div className="pageHead"><div><p className="eyebrow">IL TUO LUOGO</p><h2>{selectedRoom.name}</h2><p className="roomDescription">{selectedRoom.note}</p></div><button className="addButton" onClick={() => openUpload(selectedRoom.id)}><Plus size={27} /></button></div><div className="roomToolbar"><button className="secondary" onClick={() => { setRoomContentsError(''); setShowRoomContents(true) }}><Link2 size={17} /> Aggiungi dalla Collezione</button><button className="ghostButton" onClick={() => { setEditingRoom(selectedRoom); setShowRoom(true) }}><Pencil size={16} /> Modifica</button><button className="ghostButton danger" onClick={() => deleteRoom(selectedRoom)}><Trash2 size={16} /> Elimina</button></div>{message && <div className="pageMessage">{message}</div>}<MediaList items={roomMedia} emptyText="Questa stanza è ancora vuota" /></section>}
 
         {view === 'rituals' && <section className="page"><div className="pageHead"><div><p className="eyebrow">TEMPO PER TE</p><h2>Rituali</h2></div><button className="addButton" onClick={() => setShowRitual(true)}><Plus size={27} /></button></div>{rituals.map((ritual, index) => <article className="ritualCard" key={ritual.id}>{index % 2 === 0 ? <Wind /> : <TimerReset />}<div><strong>{ritual.name}</strong><span>{ritual.timing}{ritual.duration ? ` · ${ritual.duration}` : ''}</span><p>{ritual.note}</p></div></article>)}</section>}
 
@@ -561,13 +644,13 @@ export default function App() {
 
       <nav className="bottomNav"><button className={view === 'home' ? 'active' : ''} onClick={() => setView('home')}><Home size={20} /><span>Benvenuto</span></button><button className={view === 'rooms' || view === 'room' ? 'active' : ''} onClick={() => setView('rooms')}><Headphones size={20} /><span>Stanze</span></button><button className={view === 'rituals' || view === 'sleep' ? 'active' : ''} onClick={() => setView('sleep')}><AlarmClock size={20} /><span>Sveglie</span></button><button className={view === 'library' ? 'active' : ''} onClick={() => setView('library')}><Library size={20} /><span>Collezione</span></button></nav>
 
-      {showMediaDetails && editingMedia && <div className="modalBackdrop" onMouseDown={() => setShowMediaDetails(false)}><form className="modal" onSubmit={saveMediaDetails} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowMediaDetails(false)}><X size={20} /></button><p className="eyebrow">ORGANIZZA IL CONTENUTO</p><h2>{editingMedia.title}</h2><p className="modalIntro">Scegli in quali Stanze deve comparire. Il file resta unico nella Collezione.</p><label>Titolo<input name="title" defaultValue={editingMedia.title} /></label><label>Autore<input name="author" defaultValue={editingMedia.author || ''} /></label><fieldset className="roomChoices"><legend>Colloca nelle Stanze</legend>{rooms.map(room => <label key={room.id}><input type="checkbox" name="room_ids" value={room.id} defaultChecked={(editingMedia.room_ids || []).includes(room.id)} /><span>{room.name}</span></label>)}</fieldset><button className="secondary submit" type="button" onClick={() => selectTrack(editingMedia)}><Volume2 size={18}/> Ascolta</button><button className="primary submit" type="submit" disabled={saving}>{saving ? 'Salvataggio…' : 'Salva collocazione'}</button></form></div>}
+      {showMediaDetails && editingMedia && <div className="modalBackdrop" onMouseDown={() => !saving && setShowMediaDetails(false)}><form className="modal" onSubmit={saveMediaDetails} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" disabled={saving} onClick={() => setShowMediaDetails(false)}><X size={20} /></button><p className="eyebrow">ORGANIZZA IL CONTENUTO</p><h2>{editingMedia.title}</h2><p className="modalIntro">Scegli in quali Stanze deve comparire. Il file resta unico nella Collezione.</p><label>Titolo<input name="title" defaultValue={editingMedia.title} /></label><label>Autore<input name="author" defaultValue={editingMedia.author || ''} /></label><fieldset className="roomChoices"><legend>Colloca nelle Stanze</legend>{rooms.map(room => <label key={room.id}><input type="checkbox" name="room_ids" value={room.id} defaultChecked={(editingMedia.room_ids || []).map(String).includes(String(room.id))} /><span>{room.name}</span></label>)}</fieldset>{mediaDetailsError && <div className="formError" role="alert"><strong>Non riesco a salvare.</strong><span>{mediaDetailsError}</span></div>}<button className="secondary submit" type="button" disabled={saving} onClick={() => selectTrack(editingMedia)}><Volume2 size={18}/> Ascolta</button><button className="primary submit" type="submit" disabled={saving}>{saving ? 'Salvataggio…' : 'Salva collocazione'}</button></form></div>}
 
       {showUpload && <div className="modalBackdrop" onMouseDown={() => setShowUpload(false)}><form className="modal" onSubmit={uploadMedia} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowUpload(false)}><X size={20} /></button><p className="eyebrow">NUOVO ASCOLTO</p><h2>Aggiungi</h2><p className="modalIntro">Scegli ciò che questo contenuto rappresenta per te.</p><label>Tipo<select name="media_type" defaultValue="music"><option value="music">Musica</option><option value="audiobook">Audiolibro</option><option value="podcast">Podcast</option><option value="meditation">Meditazione</option></select></label><label>Titolo<input name="title" required /></label><label>Autore<input name="author" placeholder="Facoltativo" /></label><fieldset className="roomChoices"><legend>Stanze</legend>{rooms.map(room => <label key={room.id}><input type="checkbox" name="room_ids" value={room.id} defaultChecked={room.id === uploadTargetRoomId} /><span>{room.name}</span></label>)}</fieldset><label className="fileField">File audio<input name="file" type="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac" required /></label>{message && <div className="message">{message}</div>}<button className="primary submit" type="submit" disabled={uploading}>{uploading ? <><LoaderCircle className="spin" size={19} /> Caricamento...</> : 'Carica e ascolta'}</button><small className="localNotice">{supabaseConfigured ? (onlineReady ? 'Archivio online collegato.' : 'Collegamento Supabase in corso…') : 'Modalità locale persistente.'}</small></form></div>}
 
       {showRoom && <div className="modalBackdrop" onMouseDown={() => setShowRoom(false)}><form className="modal" onSubmit={saveRoom} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowRoom(false)}><X size={20} /></button><p className="eyebrow">{editingRoom ? 'MODIFICA LUOGO' : 'NUOVO LUOGO'}</p><h2>{editingRoom ? 'Modifica stanza' : 'Crea una stanza'}</h2><label>Nome<input name="name" defaultValue={editingRoom?.name || ''} required /></label><label>Significato<input name="note" defaultValue={editingRoom?.note || ''} /></label><button className="primary submit" type="submit" disabled={saving}>{saving ? 'Salvataggio…' : editingRoom ? 'Salva modifiche' : 'Crea la stanza'}</button></form></div>}
 
-      {showRoomContents && selectedRoom && <div className="modalBackdrop" onMouseDown={() => setShowRoomContents(false)}><form className="modal" onSubmit={saveRoomContents} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowRoomContents(false)}><X size={20} /></button><p className="eyebrow">CONTENUTI DELLA STANZA</p><h2>{selectedRoom.name}</h2><p className="modalIntro">Scegli quali contenuti della Collezione devono vivere in questa stanza.</p><div className="assignmentList">{media.filter(item => !item.demo).map(item => <label key={item.id}><input type="checkbox" name="media_ids" value={item.id} defaultChecked={(item.room_ids || []).includes(selectedRoom.id)} /><span><strong>{item.title}</strong><small>{mediaLabels[item.media_type] || item.media_type}</small></span></label>)}</div><button className="primary submit" type="submit" disabled={saving}>{saving ? 'Salvataggio…' : 'Salva contenuti'}</button></form></div>}
+      {showRoomContents && selectedRoom && <div className="modalBackdrop" onMouseDown={() => !saving && setShowRoomContents(false)}><form className="modal" onSubmit={saveRoomContents} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" disabled={saving} onClick={() => setShowRoomContents(false)}><X size={20} /></button><p className="eyebrow">CONTENUTI DELLA STANZA</p><h2>{selectedRoom.name}</h2><p className="modalIntro">Scegli quali contenuti della Collezione devono vivere in questa stanza.</p><div className="assignmentList">{media.filter(item => !item.demo).map(item => <label key={item.id}><input type="checkbox" name="media_ids" value={item.id} defaultChecked={(item.room_ids || []).map(String).includes(String(selectedRoom.id))} /><span><strong>{item.title}</strong><small>{mediaLabels[item.media_type] || item.media_type}</small></span></label>)}</div>{roomContentsError && <div className="formError" role="alert"><strong>Non riesco a salvare.</strong><span>{roomContentsError}</span></div>}<button className="primary submit" type="submit" disabled={saving}>{saving ? 'Salvataggio…' : 'Salva contenuti'}</button></form></div>}
 
       {showRitual && <div className="modalBackdrop" onMouseDown={() => setShowRitual(false)}><form className="modal" onSubmit={createRitual} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowRitual(false)}><X size={20} /></button><p className="eyebrow">NUOVO RITUALE</p><h2>Crea un rituale</h2><label>Nome<input name="name" required /></label><label>Quando<input name="timing" /></label><label>Durata<input name="duration" /></label><label>Significato<input name="note" /></label><button className="primary submit" type="submit">Crea il rituale</button></form></div>}
     </div>
