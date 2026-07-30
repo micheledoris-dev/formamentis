@@ -1,4 +1,4 @@
-# FormaMentis — Release 0.5
+# FormaMentis — Release 0.5.1
 
 ## Novità
 Le Stanze sono ora veri ambienti separati. La Collezione contiene tutti gli ascolti; ogni Stanza mostra soltanto quelli assegnati. Uno stesso contenuto può vivere in più Stanze.

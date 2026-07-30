@@ -1,11 +1,11 @@
 # Changelog
 
+## 0.5.1
+- Rimosso il nome personale fisso dalla landing page.
+- Nuovo messaggio di accoglienza: “Questo momento è per te.”
+- Nessuna modifica richiesta al database Supabase.
+
 ## 0.5.0
-- Le Stanze sono veri contenitori indipendenti.
-- Ogni Stanza mostra solo i contenuti assegnati.
+- Stanze come contenitori indipendenti.
 - Un contenuto può appartenere a più Stanze.
-- Aggiunta assegnazione dalla Collezione.
-- Creazione, modifica ed eliminazione delle Stanze.
-- Conteggio dei contenuti per Stanza.
-- Tag cliccabili delle Stanze nella Collezione.
-- Nuove tabelle Supabase `rooms` e `media_rooms`.
+- Gestione delle Stanze e assegnazione dei contenuti.

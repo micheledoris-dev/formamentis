@@ -83,13 +83,6 @@ export default function App() {
   const audioRef = useRef(null)
   const objectUrlRef = useRef(null)
 
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours()
-    if (hour < 12) return 'Buongiorno'
-    if (hour < 18) return 'Buon pomeriggio'
-    return 'Buonasera'
-  }, [])
-
   const selectedRoom = useMemo(() => rooms.find(room => room.id === selectedRoomId) || null, [rooms, selectedRoomId])
   const roomMedia = useMemo(() => media.filter(item => (item.room_ids || []).includes(selectedRoomId)), [media, selectedRoomId])
   const roomCounts = useMemo(() => Object.fromEntries(rooms.map(room => [room.id, media.filter(item => (item.room_ids || []).includes(room.id)).length])), [rooms, media])
@@ -428,7 +421,7 @@ export default function App() {
       <header className="topbar"><Brand /><button className="iconButton" aria-label="Apri menu" onClick={() => setShowMenu(true)}><Menu size={21} strokeWidth={1.6} /></button></header>
 
       <main>
-        {view === 'home' && <section className="hero"><div className="overlay" /><div className="heroContent"><p className="eyebrow">{greeting}, FLAMINIA</p><h1>Come vuoi stare?</h1><p className="heroLead">Non conserviamo file. Custodiamo momenti.</p><div className="actions"><button className="primary" onClick={() => setView('rooms')}>Scegli una stanza</button><button className="secondary" onClick={() => setView('library')}>La Collezione</button></div></div></section>}
+        {view === 'home' && <section className="hero"><div className="overlay" /><div className="heroContent"><p className="eyebrow">Questo momento è per te.</p><h1>Come vuoi stare?</h1><p className="heroLead">Non conserviamo file. Custodiamo momenti.</p><div className="actions"><button className="primary" onClick={() => setView('rooms')}>Scegli una stanza</button><button className="secondary" onClick={() => setView('library')}>La Collezione</button></div></div></section>}
 
         {view === 'rooms' && <section className="page"><div className="pageHead"><div><p className="eyebrow">I TUOI LUOGHI</p><h2>Stanze</h2></div><button className="addButton" onClick={() => { setEditingRoom(null); setShowRoom(true) }}><Plus size={27} /></button></div><div className="roomGrid">{rooms.map((room, index) => <button className={`roomCard room${(index % 4) + 1}`} key={room.id} onClick={() => openRoom(room)}><span>STANZA {String(index + 1).padStart(2, '0')} · {roomCounts[room.id] || 0} CONTENUTI</span><strong>{room.name}</strong><p>{room.note}</p><ChevronRight size={20} /></button>)}</div></section>}
 
