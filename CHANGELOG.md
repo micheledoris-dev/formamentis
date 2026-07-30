@@ -1,11 +1,11 @@
 # Changelog
 
-## 0.4.0
-
-- collegamento Supabase reso più robusto
-- supporto sia alla publishable key sia alla legacy anon key
-- validazione preventiva di URL e chiave per evitare schermate nere
-- SQL idempotente per tabella, bucket e policy
-- limite Storage impostato a 100 MB per file
-- mantenuta la modalità locale di sicurezza
-- mantenute landing, Stanze, Rituali, Collezione e player
+## 0.5.0
+- Le Stanze sono veri contenitori indipendenti.
+- Ogni Stanza mostra solo i contenuti assegnati.
+- Un contenuto può appartenere a più Stanze.
+- Aggiunta assegnazione dalla Collezione.
+- Creazione, modifica ed eliminazione delle Stanze.
+- Conteggio dei contenuti per Stanza.
+- Tag cliccabili delle Stanze nella Collezione.
+- Nuove tabelle Supabase `rooms` e `media_rooms`.
