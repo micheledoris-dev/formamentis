@@ -1,10 +1,9 @@
-# FormaMentis — Release 0.5.1
+# FormaMentis 0.6.0
 
-## Novità
-Le Stanze sono ora veri ambienti separati. La Collezione contiene tutti gli ascolti; ogni Stanza mostra soltanto quelli assegnati. Uno stesso contenuto può vivere in più Stanze.
+Release con Collezione organizzabile, timer sonno e sveglie web.
 
 ## Pubblicazione
-Caricare su GitHub tutti i file estratti dallo ZIP, sostituendo quelli esistenti.
+Caricare tutti i file nel repository GitHub collegato a Netlify. Non è necessario rieseguire SQL per usare le nuove funzioni locali di sonno e sveglia.
 
-## Aggiornamento Supabase obbligatorio
-Aprire `supabase/setup.sql`, copiare tutto il codice, incollarlo nel SQL Editor del progetto `formamentis` e premere Run. Il file è idempotente e può essere eseguito dopo la Release 0.4.
+## Limite sveglia web
+La pagina deve restare aperta. Una futura app nativa/ibrida potrà usare notifiche locali con schermo bloccato.

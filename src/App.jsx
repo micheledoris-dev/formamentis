@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  AlarmClock,
   ArrowLeft,
   ChevronRight,
   Headphones,
@@ -8,6 +9,7 @@ import {
   Link2,
   LoaderCircle,
   Menu,
+  Moon,
   Music2,
   Pause,
   Pencil,
@@ -20,6 +22,7 @@ import {
   TimerReset,
   Trash2,
   Upload,
+  Volume2,
   Wind,
   X,
 } from 'lucide-react'
@@ -64,6 +67,11 @@ export default function App() {
   const [showRoomContents, setShowRoomContents] = useState(false)
   const [showRitual, setShowRitual] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [editingMedia, setEditingMedia] = useState(null)
+  const [showMediaDetails, setShowMediaDetails] = useState(false)
+  const [alarms, setAlarms] = useState(() => safeJson(localStorage.getItem('formamentis-alarms'), []))
+  const [sleepTimer, setSleepTimer] = useState(null)
+  const sleepIntervalRef = useRef(null)
   const [rooms, setRooms] = useState(() => safeJson(localStorage.getItem('formamentis-rooms'), defaultRooms))
   const [rituals, setRituals] = useState(() => safeJson(localStorage.getItem('formamentis-rituals'), [
     { id: 'respira', name: 'Respira', timing: 'Ogni mattina', duration: '7 minuti', note: 'Un intervallo breve per cominciare con ordine.' },
@@ -90,6 +98,7 @@ export default function App() {
   useEffect(() => localStorage.setItem('formamentis-rooms', JSON.stringify(rooms)), [rooms])
   useEffect(() => localStorage.setItem('formamentis-rituals', JSON.stringify(rituals)), [rituals])
   useEffect(() => localStorage.setItem('formamentis-media', JSON.stringify(media.map(({ play_url, ...item }) => item))), [media])
+  useEffect(() => localStorage.setItem('formamentis-alarms', JSON.stringify(alarms)), [alarms])
 
   useEffect(() => {
     let mounted = true
@@ -145,7 +154,37 @@ export default function App() {
 
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+    if (sleepIntervalRef.current) window.clearInterval(sleepIntervalRef.current)
   }, [])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const now = new Date()
+      const day = now.getDay()
+      const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      setAlarms(current => current.map(alarm => {
+        if (!alarm.enabled || alarm.time !== hhmm || !(alarm.days || []).includes(day)) return alarm
+        const key = `${now.toDateString()}-${hhmm}`
+        if (alarm.last_triggered === key) return alarm
+        const track = media.find(item => item.id === alarm.media_id)
+        if (track) selectTrack(track).then(() => {
+          if (audioRef.current) {
+            audioRef.current.volume = 0.08
+            let step = 0
+            const fade = window.setInterval(() => {
+              step += 1
+              if (!audioRef.current || step >= 20) return window.clearInterval(fade)
+              audioRef.current.volume = Math.min(1, 0.08 + step * 0.046)
+            }, 3000)
+          }
+        })
+        setMessage(`Sveglia: ${alarm.name || 'È il momento di alzarsi'}`)
+        return { ...alarm, last_triggered: key }
+      }))
+    }, 15000)
+    return () => window.clearInterval(interval)
+  }, [media])
+
 
   useEffect(() => {
     const audio = audioRef.current
@@ -317,6 +356,88 @@ export default function App() {
     } catch (error) { setMessage(error.message) } finally { setSaving(false) }
   }
 
+
+  async function saveMediaDetails(event) {
+    event.preventDefault()
+    if (!editingMedia) return
+    const form = new FormData(event.currentTarget)
+    const roomIds = form.getAll('room_ids').map(String)
+    const title = String(form.get('title') || '').trim() || editingMedia.title
+    const author = String(form.get('author') || '').trim()
+    setSaving(true)
+    try {
+      if (supabaseConfigured && !editingMedia.demo) {
+        const user = await currentUser()
+        const { error: updateError } = await supabase.from('media_items').update({ title, author: author || null }).eq('id', editingMedia.id)
+        if (updateError) throw updateError
+        const { error: deleteError } = await supabase.from('media_rooms').delete().eq('media_id', editingMedia.id)
+        if (deleteError) throw deleteError
+        if (roomIds.length) {
+          const { error: insertError } = await supabase.from('media_rooms').insert(roomIds.map(roomId => ({ user_id: user.id, media_id: editingMedia.id, room_id: roomId })))
+          if (insertError) throw insertError
+        }
+      }
+      setMedia(current => current.map(item => item.id === editingMedia.id ? { ...item, title, author, room_ids: roomIds } : item))
+      setEditingMedia(null)
+      setShowMediaDetails(false)
+      setMessage(roomIds.length ? 'Contenuto assegnato alle Stanze.' : 'Contenuto salvato senza Stanza.')
+    } catch (error) { setMessage(error.message) } finally { setSaving(false) }
+  }
+
+  function openMediaDetails(item) {
+    setEditingMedia(item)
+    setShowMediaDetails(true)
+  }
+
+  function createAlarm(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const days = form.getAll('days').map(Number)
+    const mediaId = String(form.get('media_id') || '')
+    const time = String(form.get('time') || '')
+    if (!time || !mediaId || !days.length) return setMessage('Scegli orario, giorni e melodia.')
+    setAlarms(current => [...current, { id: crypto.randomUUID(), name: String(form.get('name') || '').trim() || 'Risveglio', time, days, media_id: mediaId, enabled: true }])
+    event.currentTarget.reset()
+    setMessage('Sveglia salvata. Per ora deve rimanere aperta nel browser.')
+  }
+
+  function toggleAlarm(id) { setAlarms(current => current.map(a => a.id === id ? { ...a, enabled: !a.enabled } : a)) }
+  function deleteAlarm(id) { setAlarms(current => current.filter(a => a.id !== id)) }
+
+  async function startSleepTimer(event) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    const mediaId = String(form.get('media_id') || '')
+    const minutes = Number(form.get('minutes') || 30)
+    const track = media.find(item => item.id === mediaId)
+    if (!track) return setMessage('Scegli una voce o una melodia.')
+    await selectTrack(track)
+    const endAt = Date.now() + minutes * 60000
+    setSleepTimer({ media_id: mediaId, endAt, minutes })
+    if (sleepIntervalRef.current) window.clearInterval(sleepIntervalRef.current)
+    sleepIntervalRef.current = window.setInterval(() => {
+      const remaining = endAt - Date.now()
+      if (audioRef.current && remaining <= 60000) audioRef.current.volume = Math.max(0, remaining / 60000)
+      if (remaining <= 0) {
+        window.clearInterval(sleepIntervalRef.current)
+        sleepIntervalRef.current = null
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.volume = 1 }
+        setPlaying(false)
+        setSleepTimer(null)
+        setMessage('Buonanotte.')
+      }
+    }, 1000)
+    setMessage(`Timer sonno avviato per ${minutes} minuti.`)
+  }
+
+  function cancelSleepTimer() {
+    if (sleepIntervalRef.current) window.clearInterval(sleepIntervalRef.current)
+    sleepIntervalRef.current = null
+    if (audioRef.current) audioRef.current.volume = 1
+    setSleepTimer(null)
+    setMessage('Timer sonno annullato.')
+  }
+
   function createRitual(event) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
@@ -406,12 +527,12 @@ export default function App() {
 
   const MediaList = ({ items, emptyText = 'Nessun contenuto' }) => <div className="mediaList">
     {items.length === 0 && <div className="emptyState"><Music2 /><strong>{emptyText}</strong><span>I contenuti della Collezione possono essere assegnati qui.</span></div>}
-    {items.map((item, index) => <button className={`mediaItem ${activeTrack?.id === item.id ? 'selected' : ''}`} key={item.id} onClick={() => selectTrack(item)}>
+    {items.map((item, index) => <button className={`mediaItem ${activeTrack?.id === item.id ? 'selected' : ''}`} key={item.id} onClick={() => openMediaDetails(item)}>
       <span className="cover">{String(index + 1).padStart(2, '0')}</span>
       <span className="mediaMeta"><strong>{item.title}</strong><small>{mediaLabels[item.media_type] || item.media_type}{item.author ? ` · ${item.author}` : ''}</small>
-        <span className="roomTags">{(item.room_ids || []).map(roomId => { const room = rooms.find(r => r.id === roomId); return room ? <span key={roomId} role="button" tabIndex="0" onClick={e => { e.stopPropagation(); openRoom(room) }}>{room.name}</span> : null })}</span>
+        {(item.room_ids || []).length === 0 ? <span className="unassigned">Da assegnare a una Stanza</span> : <span className="roomTags">{(item.room_ids || []).map(roomId => { const room = rooms.find(r => r.id === roomId); return room ? <span key={roomId} role="button" tabIndex="0" onClick={e => { e.stopPropagation(); openRoom(room) }}>{room.name}</span> : null })}</span>}
       </span>
-      <span className="itemActions">{!item.demo && <span role="button" tabIndex="0" className="deleteButton" onClick={e => removeMedia(e, item)} aria-label="Elimina"><Trash2 size={16} /></span>}<Play size={18} fill="currentColor" /></span>
+      <span className="itemActions">{!item.demo && <span role="button" tabIndex="0" className="deleteButton" onClick={e => removeMedia(e, item)} aria-label="Elimina"><Trash2 size={16} /></span>}<span role="button" tabIndex="0" onClick={e => { e.stopPropagation(); selectTrack(item) }}><Play size={18} fill="currentColor" /></span></span>
     </button>)}
   </div>
 
@@ -429,14 +550,18 @@ export default function App() {
 
         {view === 'rituals' && <section className="page"><div className="pageHead"><div><p className="eyebrow">TEMPO PER TE</p><h2>Rituali</h2></div><button className="addButton" onClick={() => setShowRitual(true)}><Plus size={27} /></button></div>{rituals.map((ritual, index) => <article className="ritualCard" key={ritual.id}>{index % 2 === 0 ? <Wind /> : <TimerReset />}<div><strong>{ritual.name}</strong><span>{ritual.timing}{ritual.duration ? ` · ${ritual.duration}` : ''}</span><p>{ritual.note}</p></div></article>)}</section>}
 
+        {view === 'sleep' && <section className="page"><div className="pageHead"><div><p className="eyebrow">NOTTE E RISVEGLIO</p><h2>Sonno e Sveglie</h2></div><Moon size={30} /></div>{message && <div className="pageMessage">{message}</div>}<div className="sleepGrid"><form className="wellnessCard" onSubmit={startSleepTimer}><Moon size={24} /><h3>Addormentati con calma</h3><p>Scegli una voce, una meditazione o una musica. Il volume diminuirà nell'ultimo minuto.</p><label>Ascolto<select name="media_id" required defaultValue=""><option value="" disabled>Scegli dalla Collezione</option>{media.filter(i => !i.demo).map(i => <option key={i.id} value={i.id}>{i.title}</option>)}</select></label><label>Durata<select name="minutes" defaultValue="30"><option value="15">15 minuti</option><option value="30">30 minuti</option><option value="45">45 minuti</option><option value="60">60 minuti</option><option value="90">90 minuti</option></select></label>{sleepTimer ? <button type="button" className="secondary submit" onClick={cancelSleepTimer}>Annulla timer</button> : <button className="primary submit" type="submit">Avvia il sonno</button>}</form><form className="wellnessCard" onSubmit={createAlarm}><AlarmClock size={24} /><h3>Svegliati come preferisci</h3><p>Yoga, una melodia dolce oppure l'alzabandiera: scegli tu il primo suono della giornata.</p><label>Nome<input name="name" placeholder="Risveglio del mattino" /></label><label>Ora<input name="time" type="time" required /></label><label>Melodia<select name="media_id" required defaultValue=""><option value="" disabled>Scegli dalla Collezione</option>{media.filter(i => !i.demo).map(i => <option key={i.id} value={i.id}>{i.title}</option>)}</select></label><fieldset className="dayChoices"><legend>Giorni</legend>{[['D',0],['L',1],['M',2],['M',3],['G',4],['V',5],['S',6]].map(([d,v]) => <label key={v}><input type="checkbox" name="days" value={v} /><span>{d}</span></label>)}</fieldset><button className="primary submit" type="submit">Salva sveglia</button></form></div><div className="alarmList">{alarms.map(alarm => { const track=media.find(i=>i.id===alarm.media_id); return <article className="alarmCard" key={alarm.id}><button className={`alarmToggle ${alarm.enabled?'on':''}`} onClick={()=>toggleAlarm(alarm.id)}><AlarmClock size={18}/></button><div><strong>{alarm.time} · {alarm.name}</strong><span>{track?.title || 'Contenuto non disponibile'}</span></div><button className="deleteButton" onClick={()=>deleteAlarm(alarm.id)}><Trash2 size={16}/></button></article>})}</div><p className="technicalNote">Nota: nella versione web la sveglia è affidabile solo se FormaMentis resta aperta. La versione app userà notifiche locali anche a schermo bloccato.</p></section>}
+
         {view === 'library' && <section className="page"><div className="pageHead"><div><p className="eyebrow">MUSICA E PAROLE</p><h2>La Collezione</h2></div><button className="addButton" onClick={() => openUpload()}><Plus size={27} /></button></div><button className="uploadHint" onClick={() => openUpload()}><Upload size={21} /><div><strong>Aggiungi un nuovo ascolto</strong><span>Musica, audiolibri, podcast o meditazioni</span></div><ChevronRight size={20} /></button>{message && <div className="pageMessage">{message}</div>}<MediaList items={media} emptyText="La Collezione è vuota" /></section>}
       </main>
 
-      {showMenu && <div className="menuBackdrop" onMouseDown={() => setShowMenu(false)}><aside className="sideMenu" onMouseDown={e => e.stopPropagation()}><div className="menuHead"><Brand /><button className="closeButton menuClose" onClick={() => setShowMenu(false)}><X size={20} /></button></div><p className="menuIntro">Il tuo spazio personale.</p><nav className="menuLinks"><button onClick={() => goTo('home')}><Home size={20} /><span>Benvenuto</span><ChevronRight size={18} /></button><button onClick={() => goTo('rooms')}><Headphones size={20} /><span>Stanze</span><ChevronRight size={18} /></button><button onClick={() => goTo('rituals')}><TimerReset size={20} /><span>Rituali</span><ChevronRight size={18} /></button><button onClick={() => goTo('library')}><Library size={20} /><span>La Collezione</span><ChevronRight size={18} /></button></nav></aside></div>}
+      {showMenu && <div className="menuBackdrop" onMouseDown={() => setShowMenu(false)}><aside className="sideMenu" onMouseDown={e => e.stopPropagation()}><div className="menuHead"><Brand /><button className="closeButton menuClose" onClick={() => setShowMenu(false)}><X size={20} /></button></div><p className="menuIntro">Il tuo spazio personale.</p><nav className="menuLinks"><button onClick={() => goTo('home')}><Home size={20} /><span>Benvenuto</span><ChevronRight size={18} /></button><button onClick={() => goTo('rooms')}><Headphones size={20} /><span>Stanze</span><ChevronRight size={18} /></button><button onClick={() => goTo('rituals')}><TimerReset size={20} /><span>Rituali</span><ChevronRight size={18} /></button><button onClick={() => goTo('sleep')}><AlarmClock size={20} /><span>Sonno e Sveglie</span><ChevronRight size={18} /></button><button onClick={() => goTo('library')}><Library size={20} /><span>La Collezione</span><ChevronRight size={18} /></button></nav></aside></div>}
 
       {activeTrack && <aside className="player"><div className="playerTop"><div className="playerIcon"><Music2 size={18} /></div><div className="playerText"><strong>{activeTrack.title}</strong><span>{activeTrack.author || mediaLabels[activeTrack.media_type]}</span></div><button className="mainPlay" onClick={() => activeTrack.play_url && setPlaying(!playing)}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</button></div><div className="timeline"><span>{formatTime(progress)}</span><input type="range" min="0" max={duration || 0} value={Math.min(progress, duration || 0)} onChange={seek} /><span>{formatTime(duration)}</span></div><div className="playerControls"><button className={shuffleEnabled ? 'active' : ''} onClick={() => setShuffleEnabled(v => !v)}><Shuffle size={17} /></button><button onClick={playPrevious}><SkipBack size={19} fill="currentColor" /></button><button className="controlPlay" onClick={() => activeTrack.play_url && setPlaying(!playing)}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</button><button onClick={playNext}><SkipForward size={19} fill="currentColor" /></button><button className={repeatEnabled ? 'active' : ''} onClick={() => setRepeatEnabled(v => !v)}><Repeat2 size={17} /></button></div></aside>}
 
-      <nav className="bottomNav"><button className={view === 'home' ? 'active' : ''} onClick={() => setView('home')}><Home size={20} /><span>Benvenuto</span></button><button className={view === 'rooms' || view === 'room' ? 'active' : ''} onClick={() => setView('rooms')}><Headphones size={20} /><span>Stanze</span></button><button className={view === 'rituals' ? 'active' : ''} onClick={() => setView('rituals')}><TimerReset size={20} /><span>Rituali</span></button><button className={view === 'library' ? 'active' : ''} onClick={() => setView('library')}><Library size={20} /><span>Collezione</span></button></nav>
+      <nav className="bottomNav"><button className={view === 'home' ? 'active' : ''} onClick={() => setView('home')}><Home size={20} /><span>Benvenuto</span></button><button className={view === 'rooms' || view === 'room' ? 'active' : ''} onClick={() => setView('rooms')}><Headphones size={20} /><span>Stanze</span></button><button className={view === 'rituals' || view === 'sleep' ? 'active' : ''} onClick={() => setView('sleep')}><AlarmClock size={20} /><span>Sveglie</span></button><button className={view === 'library' ? 'active' : ''} onClick={() => setView('library')}><Library size={20} /><span>Collezione</span></button></nav>
+
+      {showMediaDetails && editingMedia && <div className="modalBackdrop" onMouseDown={() => setShowMediaDetails(false)}><form className="modal" onSubmit={saveMediaDetails} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowMediaDetails(false)}><X size={20} /></button><p className="eyebrow">ORGANIZZA IL CONTENUTO</p><h2>{editingMedia.title}</h2><p className="modalIntro">Scegli in quali Stanze deve comparire. Il file resta unico nella Collezione.</p><label>Titolo<input name="title" defaultValue={editingMedia.title} /></label><label>Autore<input name="author" defaultValue={editingMedia.author || ''} /></label><fieldset className="roomChoices"><legend>Colloca nelle Stanze</legend>{rooms.map(room => <label key={room.id}><input type="checkbox" name="room_ids" value={room.id} defaultChecked={(editingMedia.room_ids || []).includes(room.id)} /><span>{room.name}</span></label>)}</fieldset><button className="secondary submit" type="button" onClick={() => selectTrack(editingMedia)}><Volume2 size={18}/> Ascolta</button><button className="primary submit" type="submit" disabled={saving}>{saving ? 'Salvataggio…' : 'Salva collocazione'}</button></form></div>}
 
       {showUpload && <div className="modalBackdrop" onMouseDown={() => setShowUpload(false)}><form className="modal" onSubmit={uploadMedia} onMouseDown={e => e.stopPropagation()}><button className="closeButton" type="button" onClick={() => setShowUpload(false)}><X size={20} /></button><p className="eyebrow">NUOVO ASCOLTO</p><h2>Aggiungi</h2><p className="modalIntro">Scegli ciò che questo contenuto rappresenta per te.</p><label>Tipo<select name="media_type" defaultValue="music"><option value="music">Musica</option><option value="audiobook">Audiolibro</option><option value="podcast">Podcast</option><option value="meditation">Meditazione</option></select></label><label>Titolo<input name="title" required /></label><label>Autore<input name="author" placeholder="Facoltativo" /></label><fieldset className="roomChoices"><legend>Stanze</legend>{rooms.map(room => <label key={room.id}><input type="checkbox" name="room_ids" value={room.id} defaultChecked={room.id === uploadTargetRoomId} /><span>{room.name}</span></label>)}</fieldset><label className="fileField">File audio<input name="file" type="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac" required /></label>{message && <div className="message">{message}</div>}<button className="primary submit" type="submit" disabled={uploading}>{uploading ? <><LoaderCircle className="spin" size={19} /> Caricamento...</> : 'Carica e ascolta'}</button><small className="localNotice">{supabaseConfigured ? (onlineReady ? 'Archivio online collegato.' : 'Collegamento Supabase in corso…') : 'Modalità locale persistente.'}</small></form></div>}
 
