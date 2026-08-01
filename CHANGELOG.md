@@ -1,3 +1,13 @@
+# FormaMentis 0.6.4
+
+## Riproduzione audio
+
+- Sostituiti i link firmati con il download autenticato del file da Supabase Storage.
+- Creato un Blob locale prima della riproduzione.
+- Separata la preparazione del file dal comando Play per rispettare i limiti di Safari/iPhone.
+- Aggiunti controlli su dimensione, MIME type e supporto del browser.
+- Migliorati i messaggi diagnostici.
+
 # FormaMentis 0.6.3
 
 ## Correzioni

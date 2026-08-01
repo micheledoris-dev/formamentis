@@ -193,9 +193,10 @@ export default function App() {
     if (!audio || !activeTrack?.play_url) return
     setProgress(0)
     setDuration(0)
+    audio.pause()
     audio.src = activeTrack.play_url
     audio.load()
-    if (playing) audio.play().catch(() => setPlaying(false))
+    setPlaying(false)
   }, [activeTrack?.id, activeTrack?.play_url])
 
   useEffect(() => {
@@ -219,35 +220,48 @@ export default function App() {
 
   async function selectTrack(item) {
     setMessage('')
+    setPlaying(false)
+
     if (item.demo) {
       setActiveTrack(item)
-      setPlaying(false)
       setMessage('Questo è un contenuto dimostrativo. Carica un file audio per ascoltarlo davvero.')
       return
     }
 
     try {
-      let playable = item
+      let blob
 
       if (item.local) {
-        const blob = await getLocalAudio(item.id)
+        blob = await getLocalAudio(item.id)
         if (!blob) throw new Error('Il file locale non è più disponibile. Ricaricalo nella Collezione.')
-        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
-        objectUrlRef.current = URL.createObjectURL(blob)
-        playable = { ...item, play_url: objectUrlRef.current }
       } else if (supabaseConfigured && item.storage_path) {
         const { data, error } = await supabase.storage
           .from('audio-files')
-          .createSignedUrl(item.storage_path, 3600)
+          .download(item.storage_path)
         if (error) throw error
-        if (!data?.signedUrl) throw new Error('Non riesco a creare il collegamento audio.')
-        playable = { ...item, play_url: data.signedUrl }
-        setMedia(current => current.map(mediaItem =>
-          mediaItem.id === item.id ? { ...mediaItem, play_url: data.signedUrl } : mediaItem
-        ))
+        blob = data
+      } else {
+        throw new Error('Percorso del file audio mancante.')
       }
 
-      if (!playable.play_url) throw new Error('Il file audio non è disponibile.')
+      if (!(blob instanceof Blob) || blob.size === 0) {
+        throw new Error('Il file audio è vuoto o non è stato scaricato correttamente.')
+      }
+
+      const declaredType = item.mime_type || blob.type || ''
+      if (declaredType && !declaredType.startsWith('audio/')) {
+        throw new Error(`Formato non riconosciuto come audio (${declaredType}).`)
+      }
+
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = URL.createObjectURL(blob)
+
+      const playable = {
+        ...item,
+        play_url: objectUrlRef.current,
+        downloaded_size: blob.size,
+        downloaded_type: blob.type || item.mime_type || 'audio sconosciuto',
+      }
 
       setActiveTrack(playable)
 
@@ -258,11 +272,11 @@ export default function App() {
       audio.src = playable.play_url
       audio.load()
 
-      await audio.play()
-      setPlaying(true)
+      setMessage(`“${item.title}” è pronto. Premi Play nel player.`)
     } catch (error) {
+      setActiveTrack(null)
       setPlaying(false)
-      setMessage(`Riproduzione non riuscita: ${error?.message || 'errore sconosciuto'}`)
+      setMessage(`File non riproducibile: ${error?.message || 'errore sconosciuto'}`)
     }
   }
 
@@ -272,19 +286,31 @@ export default function App() {
 
     try {
       if (audio.paused) {
-        if (!audio.src && activeTrack.play_url) {
+        if (!activeTrack.play_url) throw new Error('Prima tocca il contenuto nella Collezione.')
+        if (!audio.src) {
           audio.src = activeTrack.play_url
           audio.load()
         }
+
+        const mime = activeTrack.downloaded_type || activeTrack.mime_type || ''
+        if (mime && audio.canPlayType(mime) === '') {
+          throw new Error(`Safari non supporta questo formato (${mime}). Prova un file MP3 o M4A senza protezione DRM.`)
+        }
+
         await audio.play()
         setPlaying(true)
+        setMessage('')
       } else {
         audio.pause()
         setPlaying(false)
       }
     } catch (error) {
       setPlaying(false)
-      setMessage(`Riproduzione non riuscita: ${error?.message || 'errore sconosciuto'}`)
+      const mediaError = audio.error
+      const detail = mediaError
+        ? `codice ${mediaError.code}`
+        : (error?.message || 'errore sconosciuto')
+      setMessage(`Riproduzione non riuscita: ${detail}`)
     }
   }
 

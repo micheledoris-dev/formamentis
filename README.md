@@ -15,3 +15,13 @@ La pagina deve restare aperta. Una futura app nativa/ibrida potrà usare notific
 - riproduzione avviata direttamente dal gesto dell'utente, compatibile con Safari/iPhone;
 - messaggi di errore audio visibili;
 - sincronizzazione dello stato Play/Pausa con il player reale.
+
+
+## Correzione 0.6.4 — riproduzione affidabile
+
+- il file viene scaricato da Supabase Storage come Blob;
+- il player usa un URL locale del browser;
+- il primo tocco prepara il file;
+- il secondo tocco sul Play avvia l'audio direttamente, compatibile con Safari;
+- vengono controllati dimensione, MIME type e compatibilità del formato;
+- gli errori di riproduzione sono mostrati nell'interfaccia.
