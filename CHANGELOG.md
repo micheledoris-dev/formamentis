@@ -1,3 +1,11 @@
+# FormaMentis 0.6.5
+
+## Messaggi e qualità
+
+- Uniformati tutti i messaggi dell'app in italiano.
+- Rimossi i testi tecnici grezzi restituiti da Supabase.
+- Aggiunte spiegazioni semplici per errori di database, permessi, rete, Storage e audio.
+
 # FormaMentis 0.6.4
 
 ## Riproduzione audio

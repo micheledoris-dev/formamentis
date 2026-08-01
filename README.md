@@ -25,3 +25,10 @@ La pagina deve restare aperta. Una futura app nativa/ibrida potrà usare notific
 - il secondo tocco sul Play avvia l'audio direttamente, compatibile con Safari;
 - vengono controllati dimensione, MIME type e compatibilità del formato;
 - gli errori di riproduzione sono mostrati nell'interfaccia.
+
+
+## Release 0.6.5
+
+- tutti i messaggi mostrati all'utente sono in italiano;
+- gli errori tecnici di Supabase non vengono più mostrati direttamente;
+- messaggi più chiari per database, permessi, rete, Storage e audio.

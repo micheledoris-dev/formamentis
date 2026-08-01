@@ -43,6 +43,49 @@ const starterMedia = [
 
 const mediaLabels = { music: 'Musica', audiobook: 'Audiolibro', podcast: 'Podcast', meditation: 'Meditazione' }
 
+function italianError(error, fallback = 'Operazione non riuscita. Riprova.') {
+  const raw = String(error?.message || error || '').trim()
+  const message = raw.toLowerCase()
+
+  if (!raw) return fallback
+  if (message.includes('could not find the table') || message.includes('schema cache')) {
+    return 'La struttura del database non è ancora pronta. Ricarica la pagina e riprova.'
+  }
+  if (message.includes('anonymous sign-ins are disabled')) {
+    return 'L’accesso anonimo non è attivo. Controlla le impostazioni di Supabase.'
+  }
+  if (
+    message.includes('row-level security') ||
+    message.includes('violates row level security') ||
+    message.includes('permission denied') ||
+    message.includes('not authorized')
+  ) {
+    return 'Non hai i permessi necessari per completare questa operazione.'
+  }
+  if (message.includes('failed to fetch') || message.includes('network')) {
+    return 'Connessione non disponibile. Controlla internet e riprova.'
+  }
+  if (message.includes('duplicate key') || message.includes('already exists')) {
+    return 'Questo elemento esiste già.'
+  }
+  if (message.includes('bucket')) {
+    return 'L’archivio audio non è configurato correttamente.'
+  }
+  if (message.includes('not found')) {
+    return 'Il contenuto richiesto non è disponibile.'
+  }
+  if (
+    message.includes('audio') ||
+    message.includes('media') ||
+    message.includes('play') ||
+    message.includes('format')
+  ) {
+    return 'Non riesco a riprodurre questo file. Prova un MP3 o M4A senza protezione.'
+  }
+  return fallback
+}
+
+
 function safeJson(value, fallback) {
   try { return JSON.parse(value) ?? fallback } catch { return fallback }
 }
@@ -147,7 +190,7 @@ export default function App() {
           setMessage('')
         }
       } catch (error) {
-        if (mounted) setMessage(`Supabase: ${error.message}`)
+        if (mounted) setMessage(italianError(error, 'Collegamento a Supabase non riuscito.'))
       }
     }
     connect()
@@ -276,7 +319,7 @@ export default function App() {
     } catch (error) {
       setActiveTrack(null)
       setPlaying(false)
-      setMessage(`File non riproducibile: ${error?.message || 'errore sconosciuto'}`)
+      setMessage(italianError(error, 'Non riesco a preparare questo file audio.'))
     }
   }
 
@@ -306,11 +349,11 @@ export default function App() {
       }
     } catch (error) {
       setPlaying(false)
-      const mediaError = audio.error
-      const detail = mediaError
-        ? `codice ${mediaError.code}`
-        : (error?.message || 'errore sconosciuto')
-      setMessage(`Riproduzione non riuscita: ${detail}`)
+      setMessage(
+        audio.error
+          ? 'Non riesco a riprodurre questo file. Prova un MP3 o M4A senza protezione.'
+          : italianError(error, 'Non riesco a riprodurre questo file.')
+      )
     }
   }
 
@@ -361,7 +404,7 @@ export default function App() {
       event.currentTarget.reset()
       await selectTrack(item)
     } catch (error) {
-      setMessage(error.message || 'Caricamento non riuscito.')
+      setMessage(italianError(error, 'Caricamento non riuscito. Riprova.'))
     } finally {
       setUploading(false)
     }
@@ -392,7 +435,7 @@ export default function App() {
       }
       setShowRoom(false)
       setEditingRoom(null)
-    } catch (error) { setMessage(error.message) } finally { setSaving(false) }
+    } catch (error) { setMessage(italianError(error)) } finally { setSaving(false) }
   }
 
   async function deleteRoom(room) {
@@ -406,7 +449,7 @@ export default function App() {
       setMedia(current => current.map(item => ({ ...item, room_ids: (item.room_ids || []).filter(id => id !== room.id) })))
       setSelectedRoomId(null)
       setView('rooms')
-    } catch (error) { setMessage(error.message) }
+    } catch (error) { setMessage(italianError(error)) }
   }
 
   async function saveRoomContents(event) {
@@ -470,9 +513,9 @@ export default function App() {
       setShowRoomContents(false)
       setMessage('Contenuti della Stanza salvati.')
     } catch (error) {
-      const detail = error?.message || 'Salvataggio non riuscito.'
+      const detail = italianError(error, 'Salvataggio non riuscito. Riprova.')
       setRoomContentsError(detail)
-      setMessage(`Salvataggio non riuscito: ${detail}`)
+      setMessage(detail)
     } finally {
       setSaving(false)
     }
@@ -535,9 +578,9 @@ export default function App() {
       setShowMediaDetails(false)
       setMessage(roomIds.length ? 'Collocazione salvata.' : 'Contenuto salvato senza Stanza.')
     } catch (error) {
-      const detail = error?.message || 'Salvataggio non riuscito.'
+      const detail = italianError(error, 'Salvataggio non riuscito. Riprova.')
       setMediaDetailsError(detail)
-      setMessage(`Salvataggio non riuscito: ${detail}`)
+      setMessage(detail)
     } finally {
       setSaving(false)
     }
@@ -638,7 +681,7 @@ export default function App() {
       }
       setMedia(current => current.filter(x => x.id !== item.id))
       if (activeTrack?.id === item.id) { setPlaying(false); setActiveTrack(null) }
-    } catch (error) { setMessage(error.message) }
+    } catch (error) { setMessage(italianError(error)) }
   }
 
   const playableMedia = useMemo(() => media.filter(item => !item.demo), [media])
@@ -710,7 +753,7 @@ export default function App() {
         onError={() => {
           const code = audioRef.current?.error?.code
           setPlaying(false)
-          setMessage(`Errore audio${code ? ` (${code})` : ''}. Tocca nuovamente il brano per rigenerare il collegamento.`)
+          setMessage('Non riesco a riprodurre questo file. Tocca nuovamente il brano oppure prova un MP3 o M4A.')
         }}
       />
       <header className="topbar"><Brand /><button className="iconButton" aria-label="Apri menu" onClick={() => setShowMenu(true)}><Menu size={21} strokeWidth={1.6} /></button></header>
