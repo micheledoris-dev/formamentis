@@ -1,3 +1,13 @@
+# FormaMentis 0.6.3
+
+## Correzioni
+
+- Corretto il mancato avvio dei brani su Safari, iPhone, Mac e browser mobili.
+- Il link firmato Supabase viene rigenerato quando si tocca un contenuto.
+- `audio.play()` viene chiamato direttamente durante il clic dell'utente.
+- Aggiunti messaggi di errore del player.
+- Il pulsante Play/Pausa ora segue lo stato reale dell'elemento audio.
+
 # FormaMentis 0.6.2
 
 - Corretto il salvataggio dei contenuti dalla finestra di una Stanza.

@@ -225,16 +225,67 @@ export default function App() {
       setMessage('Questo è un contenuto dimostrativo. Carica un file audio per ascoltarlo davvero.')
       return
     }
-    let playable = item
-    if (item.local && !item.play_url) {
-      const blob = await getLocalAudio(item.id)
-      if (!blob) return setMessage('Il file locale non è più disponibile. Ricaricalo nella Collezione.')
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
-      objectUrlRef.current = URL.createObjectURL(blob)
-      playable = { ...item, play_url: objectUrlRef.current }
+
+    try {
+      let playable = item
+
+      if (item.local) {
+        const blob = await getLocalAudio(item.id)
+        if (!blob) throw new Error('Il file locale non è più disponibile. Ricaricalo nella Collezione.')
+        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+        objectUrlRef.current = URL.createObjectURL(blob)
+        playable = { ...item, play_url: objectUrlRef.current }
+      } else if (supabaseConfigured && item.storage_path) {
+        const { data, error } = await supabase.storage
+          .from('audio-files')
+          .createSignedUrl(item.storage_path, 3600)
+        if (error) throw error
+        if (!data?.signedUrl) throw new Error('Non riesco a creare il collegamento audio.')
+        playable = { ...item, play_url: data.signedUrl }
+        setMedia(current => current.map(mediaItem =>
+          mediaItem.id === item.id ? { ...mediaItem, play_url: data.signedUrl } : mediaItem
+        ))
+      }
+
+      if (!playable.play_url) throw new Error('Il file audio non è disponibile.')
+
+      setActiveTrack(playable)
+
+      const audio = audioRef.current
+      if (!audio) throw new Error('Player audio non disponibile.')
+
+      audio.pause()
+      audio.src = playable.play_url
+      audio.load()
+
+      await audio.play()
+      setPlaying(true)
+    } catch (error) {
+      setPlaying(false)
+      setMessage(`Riproduzione non riuscita: ${error?.message || 'errore sconosciuto'}`)
     }
-    setActiveTrack(playable)
-    setPlaying(Boolean(playable.play_url))
+  }
+
+  async function togglePlayback() {
+    const audio = audioRef.current
+    if (!audio || !activeTrack) return
+
+    try {
+      if (audio.paused) {
+        if (!audio.src && activeTrack.play_url) {
+          audio.src = activeTrack.play_url
+          audio.load()
+        }
+        await audio.play()
+        setPlaying(true)
+      } else {
+        audio.pause()
+        setPlaying(false)
+      }
+    } catch (error) {
+      setPlaying(false)
+      setMessage(`Riproduzione non riuscita: ${error?.message || 'errore sconosciuto'}`)
+    }
   }
 
   async function uploadMedia(event) {
@@ -621,7 +672,21 @@ export default function App() {
 
   return (
     <div className="shell">
-      <audio ref={audioRef} onEnded={handleTrackEnded} onTimeUpdate={e => setProgress(e.currentTarget.currentTime)} onLoadedMetadata={e => setDuration(e.currentTarget.duration)} />
+      <audio
+        ref={audioRef}
+        preload="metadata"
+        playsInline
+        onEnded={handleTrackEnded}
+        onTimeUpdate={e => setProgress(e.currentTarget.currentTime)}
+        onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onError={() => {
+          const code = audioRef.current?.error?.code
+          setPlaying(false)
+          setMessage(`Errore audio${code ? ` (${code})` : ''}. Tocca nuovamente il brano per rigenerare il collegamento.`)
+        }}
+      />
       <header className="topbar"><Brand /><button className="iconButton" aria-label="Apri menu" onClick={() => setShowMenu(true)}><Menu size={21} strokeWidth={1.6} /></button></header>
 
       <main>
@@ -640,7 +705,7 @@ export default function App() {
 
       {showMenu && <div className="menuBackdrop" onMouseDown={() => setShowMenu(false)}><aside className="sideMenu" onMouseDown={e => e.stopPropagation()}><div className="menuHead"><Brand /><button className="closeButton menuClose" onClick={() => setShowMenu(false)}><X size={20} /></button></div><p className="menuIntro">Il tuo spazio personale.</p><nav className="menuLinks"><button onClick={() => goTo('home')}><Home size={20} /><span>Benvenuto</span><ChevronRight size={18} /></button><button onClick={() => goTo('rooms')}><Headphones size={20} /><span>Stanze</span><ChevronRight size={18} /></button><button onClick={() => goTo('rituals')}><TimerReset size={20} /><span>Rituali</span><ChevronRight size={18} /></button><button onClick={() => goTo('sleep')}><AlarmClock size={20} /><span>Sonno e Sveglie</span><ChevronRight size={18} /></button><button onClick={() => goTo('library')}><Library size={20} /><span>La Collezione</span><ChevronRight size={18} /></button></nav></aside></div>}
 
-      {activeTrack && <aside className="player"><div className="playerTop"><div className="playerIcon"><Music2 size={18} /></div><div className="playerText"><strong>{activeTrack.title}</strong><span>{activeTrack.author || mediaLabels[activeTrack.media_type]}</span></div><button className="mainPlay" onClick={() => activeTrack.play_url && setPlaying(!playing)}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</button></div><div className="timeline"><span>{formatTime(progress)}</span><input type="range" min="0" max={duration || 0} value={Math.min(progress, duration || 0)} onChange={seek} /><span>{formatTime(duration)}</span></div><div className="playerControls"><button className={shuffleEnabled ? 'active' : ''} onClick={() => setShuffleEnabled(v => !v)}><Shuffle size={17} /></button><button onClick={playPrevious}><SkipBack size={19} fill="currentColor" /></button><button className="controlPlay" onClick={() => activeTrack.play_url && setPlaying(!playing)}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</button><button onClick={playNext}><SkipForward size={19} fill="currentColor" /></button><button className={repeatEnabled ? 'active' : ''} onClick={() => setRepeatEnabled(v => !v)}><Repeat2 size={17} /></button></div></aside>}
+      {activeTrack && <aside className="player"><div className="playerTop"><div className="playerIcon"><Music2 size={18} /></div><div className="playerText"><strong>{activeTrack.title}</strong><span>{activeTrack.author || mediaLabels[activeTrack.media_type]}</span></div><button className="mainPlay" onClick={togglePlayback}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</button></div><div className="timeline"><span>{formatTime(progress)}</span><input type="range" min="0" max={duration || 0} value={Math.min(progress, duration || 0)} onChange={seek} /><span>{formatTime(duration)}</span></div><div className="playerControls"><button className={shuffleEnabled ? 'active' : ''} onClick={() => setShuffleEnabled(v => !v)}><Shuffle size={17} /></button><button onClick={playPrevious}><SkipBack size={19} fill="currentColor" /></button><button className="controlPlay" onClick={togglePlayback}>{playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</button><button onClick={playNext}><SkipForward size={19} fill="currentColor" /></button><button className={repeatEnabled ? 'active' : ''} onClick={() => setRepeatEnabled(v => !v)}><Repeat2 size={17} /></button></div></aside>}
 
       <nav className="bottomNav"><button className={view === 'home' ? 'active' : ''} onClick={() => setView('home')}><Home size={20} /><span>Benvenuto</span></button><button className={view === 'rooms' || view === 'room' ? 'active' : ''} onClick={() => setView('rooms')}><Headphones size={20} /><span>Stanze</span></button><button className={view === 'rituals' || view === 'sleep' ? 'active' : ''} onClick={() => setView('sleep')}><AlarmClock size={20} /><span>Sveglie</span></button><button className={view === 'library' ? 'active' : ''} onClick={() => setView('library')}><Library size={20} /><span>Collezione</span></button></nav>
 

@@ -7,3 +7,11 @@ Caricare tutti i file nel repository GitHub collegato a Netlify. Non è necessar
 
 ## Limite sveglia web
 La pagina deve restare aperta. Una futura app nativa/ibrida potrà usare notifiche locali con schermo bloccato.
+
+
+## Correzione 0.6.3
+
+- rigenerazione del link audio Supabase a ogni tocco;
+- riproduzione avviata direttamente dal gesto dell'utente, compatibile con Safari/iPhone;
+- messaggi di errore audio visibili;
+- sincronizzazione dello stato Play/Pausa con il player reale.
